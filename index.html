@@ -1,282 +1,150 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+<!doctype html>
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>地籍圖詮釋資料查詢系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #2563eb;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .field-label { background-color: #f1f5f9; width: 35%; font-weight: 600; }
-        pre { white-space: pre-wrap; word-wrap: break-word; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MapMetadataService 單頁呼叫範例（含自動 fallback proxy）</title>
+  <style>
+    body { font-family: Arial, "Noto Sans TC", sans-serif; padding: 20px; max-width:900px; margin:auto; }
+    input, button { font-size: 14px; padding:6px 8px; }
+    button { margin-right:8px; }
+    pre { background:#f7f7f8; padding:12px; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
+    .meta { color:#666; font-size:13px; margin-bottom:12px; }
+    .warn { color:#a33; font-weight:600; }
+  </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body>
+  <h3>MapMetadataService 呼叫（單頁 HTML）</h3>
+  <div class="meta">
+    API: <code>http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService</code>
+    。若直接呼叫失敗，頁面會自動嘗試公開 CORS proxy 作為 fallback。
+  </div>
 
-    <div class="max-w-4xl mx-auto py-8 px-4">
-        <!-- 主面板 -->
-        <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-            <!-- 標題欄 -->
-            <div class="bg-blue-600 p-6 text-white">
-                <h1 class="text-2xl font-bold flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    地籍圖詮釋資料查詢
-                </h1>
-                <p class="mt-2 text-blue-100 text-sm">輸入地段代碼 (LotCode) 獲取內政部地政司詮釋資料</p>
-            </div>
+  <div>
+    <label>LotCode: <input id="lotcode" value="B010001" /></label>
+  </div>
 
-            <!-- 查詢區域 -->
-            <div class="p-6 border-b border-slate-100">
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" id="lotCode" value="B010001" placeholder="請輸入地段代碼 (如: B010001)" 
-                        class="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all text-lg">
-                    <button id="queryBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center justify-center gap-2 min-w-[120px]">
-                        <span id="btnText">執行查詢</span>
-                        <div id="spinner" class="loading-spinner hidden"></div>
-                    </button>
-                </div>
-                
-                <!-- 安全性提示 (Mixed Content Warning) -->
-                <div id="mixedContentWarning" class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
-                    <strong>提示：</strong> 若點擊查詢無反應，可能是因為瀏覽器阻擋了從 HTTPS 網頁存取 HTTP API。
-                    請嘗試使用 Chrome 的「允許載入不安全內容」或暫時改用 HTTP 協議瀏覽此頁面。
-                </div>
-            </div>
+  <div style="margin-top:10px;">
+    <button id="btnGet">GET 呼叫（自動 fallback）</button>
+    <button id="btnPost">POST 呼叫（自動 fallback）</button>
+    <button id="btnClear">清除結果</button>
+  </div>
 
-            <!-- 結果顯示區 -->
-            <div id="resultArea" class="hidden">
-                <div class="p-0 overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-6 py-3 text-sm font-semibold text-slate-900">欄位名稱</th>
-                                <th class="px-6 py-3 text-sm font-semibold text-slate-900">內容值</th>
-                            </tr>
-                        </thead>
-                        <tbody id="metadataTable" class="divide-y divide-slate-100">
-                            <!-- 由 JS 動態生成 -->
-                        </tbody>
-                    </table>
-                </div>
-                <div class="p-4 bg-slate-50 flex justify-between items-center border-t border-slate-200">
-                    <span class="text-xs text-slate-400">資料來源：內政部地政司 API</span>
-                    <button id="rawXmlBtn" class="text-blue-600 hover:text-blue-800 text-xs font-medium">檢視 XML 原文</button>
-                </div>
-            </div>
+  <h4>回傳結果</h4>
+  <pre id="result">尚未呼叫</pre>
 
-            <!-- 初始狀態訊息 -->
-            <div id="emptyState" class="p-12 text-center text-slate-400">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <p>請輸入代碼後點擊查詢</p>
-            </div>
-        </div>
+  <script>
+    const TARGET = 'http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService';
+    const resultEl = document.getElementById('result');
 
-        <!-- 錯誤提示 -->
-        <div id="errorBox" class="hidden mt-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 shadow-sm rounded">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-                <div class="ml-3">
-                    <p class="text-sm" id="errorMessage"></p>
-                </div>
-            </div>
-        </div>
+    function show(text) { resultEl.textContent = text; }
 
-        <!-- XML 彈窗 -->
-        <div id="xmlModal" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-                <div class="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-xl">
-                    <h3 class="font-bold text-slate-700">原始回傳 XML</h3>
-                    <button id="closeModal" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
-                </div>
-                <div class="p-6 overflow-auto bg-slate-900 text-blue-100 font-mono text-sm flex-1">
-                    <code id="xmlCode"></code>
-                </div>
-            </div>
-        </div>
-    </div>
+    // Helper: pretty-print XML if possible
+    function prettyXml(xmlText) {
+      try {
+        const p = new DOMParser();
+        const doc = p.parseFromString(xmlText, 'application/xml');
+        if (doc.querySelector('parsererror')) return xmlText;
+        const xs = new XMLSerializer();
+        const raw = xs.serializeToString(doc);
+        // simple formatting
+        return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3').split('\n').map(l => l.trim()).join('\n');
+      } catch (e) {
+        return xmlText;
+      }
+    }
 
-    <script>
-        // PDF 文件定義的欄位映射
-        const MAP_LABELS = {
-            "MapName": "圖層名稱",
-            "LotCode": "地段代碼",
-            "ExcerptType": "資料摘要",
-            "Keyword": "主題關鍵字",
-            "CompletiveTime": "資料完成(公告)日期",
-            "CreateTime": "詮釋資料建置時間",
-            "CoordinateSystem": "圖檔坐標系統",
-            "MapScale": "比例尺分母",
-            "DescriptionOfQuality": "資料品質評估方法描述",
-            "DescriptionOfTrack": "資料歷程描述",
-            "Subscription": "申購指引",
-            "Holder_UnitName": "詮釋資料單位",
-            "Holder_ContactName": "詮釋資料聯絡人",
-            "Maker_UnitName": "生產單位",
-            "Supplier_UnitName": "供應單位",
-            "Authority_UnitName": "權責單位",
-            "Purpose": "資料建置目的",
-            "Progress": "資料建置狀況",
-            "SpatialRepresentationType": "空間展示型別",
-            "WestBoundLongitude": "最西經度",
-            "EastBoundLongitude": "最東經度",
-            "SouthBoundLatitude": "最南緯度",
-            "NorthBoundLatitude": "最北緯度",
-            "UseLimitation": "用途限制",
-            "GetRestriction": "取得限制",
-            "Classification": "安全分級",
-            "MaintenanceFrequency": "維護頻率"
-        };
+    // Primary fetch attempt (direct)
+    async function tryDirectFetch(url, options) {
+      const resp = await fetch(url, options);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
+      const text = await resp.text();
+      return { text, via: 'direct', status: resp.status, contentType: resp.headers.get('content-type') || '' };
+    }
 
-        const lotCodeInput = document.getElementById('lotCode');
-        const queryBtn = document.getElementById('queryBtn');
-        const spinner = document.getElementById('spinner');
-        const btnText = document.getElementById('btnText');
-        const resultArea = document.getElementById('resultArea');
-        const metadataTable = document.getElementById('metadataTable');
-        const emptyState = document.getElementById('emptyState');
-        const errorBox = document.getElementById('errorBox');
-        const errorMessage = document.getElementById('errorMessage');
-        const xmlModal = document.getElementById('xmlModal');
-        const xmlCode = document.getElementById('xmlCode');
+    // Fallback GET via AllOrigins (GET only)
+    async function fetchViaAllOriginsGet(targetUrl) {
+      // AllOrigins raw endpoint
+      const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl);
+      const resp = await fetch(proxy, { method: 'GET' });
+      if (!resp.ok) throw new Error('Proxy GET failed: ' + resp.status);
+      const text = await resp.text();
+      return { text, via: 'allorigins', status: resp.status, contentType: resp.headers.get('content-type') || '' };
+    }
 
-        let rawXmlString = "";
+    // Fallback POST via corsproxy.io (supports forwarding POST)
+    async function fetchViaCorsProxyPost(targetUrl, body, contentType='application/x-www-form-urlencoded') {
+      // corsproxy.io forwards the request if you append the target URL as query
+      // POST to: https://corsproxy.io/?<TARGET>
+      const proxy = 'https://corsproxy.io/?' + targetUrl;
+      const resp = await fetch(proxy, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType },
+        body: body
+      });
+      if (!resp.ok) throw new Error('Proxy POST failed: ' + resp.status);
+      const text = await resp.text();
+      return { text, via: 'corsproxy.io', status: resp.status, contentType: resp.headers.get('content-type') || '' };
+    }
 
-        queryBtn.addEventListener('click', doQuery);
-        lotCodeInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') doQuery(); });
-
-        async function doQuery() {
-            const lotValue = lotCodeInput.value.trim();
-            if (!lotValue) return;
-
-            // UI Reset
-            errorBox.classList.add('hidden');
-            resultArea.classList.add('hidden');
-            emptyState.classList.add('hidden');
-            queryBtn.disabled = true;
-            spinner.classList.remove('hidden');
-            btnText.textContent = "讀取中...";
-
-            const url = `http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService?LotCode=${lotValue}`;
-
-            try {
-                // 如果在 HTTPS 環境下執行，這可能會因為 Mixed Content 被阻擋
-                // 我們嘗試使用 fetch
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`伺服器回傳錯誤 (${response.status})。可能是因為 CORS 限制或 API 暫時無法連線。`);
-                }
-
-                const xmlText = await response.text();
-                rawXmlString = xmlText;
-                processXml(xmlText);
-
-            } catch (err) {
-                console.error(err);
-                let msg = err.message;
-                if (err.message.includes('fetch')) {
-                    msg = "無法取得資料。這通常是因為「跨網域限制(CORS)」或「不安全內容阻擋(HTTP on HTTPS)」。建議檢查瀏覽器網址列右側是否有被阻擋的盾牌圖示。";
-                }
-                showError(msg);
-                emptyState.classList.remove('hidden');
-            } finally {
-                queryBtn.disabled = false;
-                spinner.classList.add('hidden');
-                btnText.textContent = "執行查詢";
-            }
+    // Unified GET with fallback
+    async function callGetWithFallback(lotcode) {
+      const url = TARGET + '?LotCode=' + encodeURIComponent(lotcode);
+      show('嘗試直接 GET：\n' + url);
+      try {
+        const r = await tryDirectFetch(url, { method: 'GET', headers: { 'Accept': 'application/xml, text/xml, */*' } });
+        show(`成功（${r.via}）\n\nContent-Type: ${r.contentType}\n\n` + prettyXml(r.text));
+      } catch (err) {
+        console.warn('Direct GET failed:', err);
+        show('直接 GET 失敗：' + err.message + '\n\n嘗試使用公開 proxy（AllOrigins）...');
+        try {
+          const r2 = await fetchViaAllOriginsGet(url);
+          show(`成功（${r2.via}）\n\nContent-Type: ${r2.contentType}\n\n` + prettyXml(r2.text));
+        } catch (err2) {
+          console.error('Proxy GET failed:', err2);
+          show('Proxy GET 也失敗：' + err2.message + '\n\n請檢查網路、或改用本機/自建後端 proxy。');
         }
+      }
+    }
 
-        function processXml(xmlString) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-            
-            // 檢查是否解析失敗
-            if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
-                showError("XML 解析失敗，回傳格式非正確 XML。");
-                return;
-            }
-
-            metadataTable.innerHTML = "";
-            let hasData = false;
-
-            // 根據映射表生成對應行
-            for (const [tag, label] of Object.entries(MAP_LABELS)) {
-                // 使用 getElementsByTagName 並處理可能存在的命名空間
-                const elements = xmlDoc.getElementsByTagName(tag);
-                if (elements.length > 0) {
-                    const val = elements[0].textContent.trim();
-                    if (val) {
-                        appendRow(label, val, tag);
-                        hasData = true;
-                    }
-                }
-            }
-
-            // 如果沒抓到預設欄位，嘗試抓取所有子節點
-            if (!hasData) {
-                const root = xmlDoc.documentElement;
-                const children = root.children;
-                if (children.length > 0) {
-                    for (let child of children) {
-                        appendRow(child.tagName, child.textContent.trim(), child.tagName);
-                        hasData = true;
-                    }
-                }
-            }
-
-            if (hasData) {
-                resultArea.classList.remove('hidden');
-                emptyState.classList.add('hidden');
-            } else {
-                showError("查詢成功，但此代碼沒有回傳具體的詮釋資料。");
-                emptyState.classList.remove('hidden');
-            }
+    // Unified POST with fallback
+    async function callPostWithFallback(lotcode) {
+      const body = 'LotCode=' + encodeURIComponent(lotcode);
+      show('嘗試直接 POST：\n' + TARGET + '\n\nbody: ' + body);
+      try {
+        const r = await tryDirectFetch(TARGET, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/xml, text/xml, */*' },
+          body: body
+        });
+        show(`成功（${r.via}）\n\nContent-Type: ${r.contentType}\n\n` + prettyXml(r.text));
+      } catch (err) {
+        console.warn('Direct POST failed:', err);
+        show('直接 POST 失敗：' + err.message + '\n\n嘗試使用公開 proxy（corsproxy.io）...');
+        try {
+          const r2 = await fetchViaCorsProxyPost(TARGET, body, 'application/x-www-form-urlencoded');
+          show(`成功（${r2.via}）\n\nContent-Type: ${r2.contentType}\n\n` + prettyXml(r2.text));
+        } catch (err2) {
+          console.error('Proxy POST failed:', err2);
+          show('Proxy POST 也失敗：' + err2.message + '\n\n請檢查網路、或改用本機/自建後端 proxy。');
         }
+      }
+    }
 
-        function appendRow(label, value, rawKey) {
-            const tr = document.createElement('tr');
-            tr.className = "hover:bg-slate-50 transition-colors";
-            tr.innerHTML = `
-                <td class="px-6 py-4 field-label border-r border-slate-100">
-                    <span class="text-slate-800">${label}</span>
-                    <span class="block text-[10px] text-slate-400 font-mono">${rawKey}</span>
-                </td>
-                <td class="px-6 py-4 text-slate-600 leading-relaxed">
-                    ${value}
-                </td>
-            `;
-            metadataTable.appendChild(tr);
-        }
+    document.getElementById('btnGet').addEventListener('click', () => {
+      const code = document.getElementById('lotcode').value.trim() || 'B010001';
+      callGetWithFallback(code);
+    });
 
-        function showError(msg) {
-            errorMessage.textContent = msg;
-            errorBox.classList.remove('hidden');
-        }
+    document.getElementById('btnPost').addEventListener('click', () => {
+      const code = document.getElementById('lotcode').value.trim() || 'B010001';
+      callPostWithFallback(code);
+    });
 
-        // Modal 操作
-        document.getElementById('rawXmlBtn').onclick = () => {
-            xmlCode.textContent = rawXmlString;
-            xmlModal.classList.remove('hidden');
-        };
-        document.getElementById('closeModal').onclick = () => xmlModal.classList.add('hidden');
-        window.onclick = (e) => { if (e.target == xmlModal) xmlModal.classList.add('hidden'); };
+    document.getElementById('btnClear').addEventListener('click', () => show('尚未呼叫'));
 
-    </script>
+    // 自動測試（可註解掉）
+    // window.addEventListener('load', () => { /* callGetWithFallback('B010001'); */ });
+  </script>
 </body>
 </html>
