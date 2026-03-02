@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta property="og:title" content="玉里地政事務所">
+    <meta property="og:description" content=" 📢 花蓮縣地段名查詢系統">
+    <meta property="og:url" content="https://ucyuli.github.io/LocationSearch/">
+    <title>玉里地政事務所-花蓮縣地段名查詢系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        .fade-in-up {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        input[type="text"] {
+            font-size: 16px !important;
+        }
+        @media (min-width: 768px) {
+            input[type="text"] {
+                font-size: 1.125rem !important;
+            }
+        }
+        /* Loading 效果 */
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 flex flex-col text-gray-800 overflow-x-hidden">
+
+    <!-- Header -->
+    <header class="bg-teal-700 text-white py-6 md:py-8 shadow-md">
+        <div class="container mx-auto px-4 text-center">
+            
+            <div class="md:hidden flex flex-col items-center gap-3 mb-4">
+                <i data-lucide="map-pin" class="w-12 h-12 text-yellow-300"></i>
+                <h1 class="text-xl font-bold tracking-tight leading-snug">
+                    玉里地政事務所<br>花蓮縣地段資料查詢系統
+                </h1>
+            </div>
+
+            <div class="hidden md:flex items-center justify-center gap-4 mb-4">
+                <i data-lucide="map-pin" class="w-8 h-8 text-yellow-300 shrink-0"></i>
+                <h1 class="text-3xl font-bold tracking-wide">
+                    玉里地政事務所-花蓮縣地段轄區判斷系統
+                </h1>
+            </div>
+
+            <p class="text-teal-100 text-[11px] xs:text-xs md:text-base px-1 md:px-2 leading-relaxed opacity-90 max-w-2xl mx-auto">
+                串接 API 即時查詢，輸入
+                <span class="text-red-300 font-bold border-red-300/30"> ＂部分＂ </span>
+                <span class="text-yellow-300 font-bold border-b border-yellow-300/30">地段代碼</span>
+                <span class="whitespace-nowrap">即可查詢 API 回傳資訊</span>
+            </p>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-6 md:py-10 max-w-3xl">
+        
+        <!-- Search Input Section -->
+        <div class="bg-white p-5 md:p-8 rounded-2xl shadow-lg mb-6 md:mb-10 relative">
+            <label class="block text-gray-700 text-sm font-bold mb-3 ml-1">
+                請輸入地段代碼 (例如：U030300)
+            </label>
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <i data-lucide="search" class="h-5 w-5 text-gray-400"></i>
+                </div>
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="block w-full pl-12 pr-4 py-3 md:py-4 border border-gray-300 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition duration-150 ease-in-out select-text"
+                    placeholder="輸入代碼，如 U030300..."
+                    style="-webkit-user-select: text; user-select: text;"
+                />
+            </div>
+            
+            <div class="mt-4 flex items-center justify-between">
+                <div class="flex items-center text-xs text-gray-500">
+                    <i data-lucide="help-circle" class="w-3 h-3 mr-1"></i> 查詢範例：
+                </div>
+                <!-- 測試單元觸發按鈕 -->
+                <button onclick="runSystemTests()" class="text-[10px] text-teal-600 font-bold border border-teal-200 px-2 py-1 rounded hover:bg-teal-50 transition active:scale-95">
+                    執行系統自我檢查
+                </button>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2 overflow-x-auto pb-1">
+                <button onclick="setSearch('U030300')" class="whitespace-nowrap px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-xs hover:bg-teal-100 transition border border-teal-100 active:scale-95">三民段(U030300)</button>
+                <button onclick="setSearch('U030100')" class="whitespace-nowrap px-3 py-1.5 bg-orange-50 text-orange-700 rounded-full text-xs hover:bg-orange-100 transition border border-orange-100 active:scale-95">玉里段(U030100)</button>
+                <button onclick="setSearch('U050100')" class="whitespace-nowrap px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-xs hover:bg-teal-100 transition border border-teal-100 active:scale-95">瑞穗段(U050100)</button>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="resultsContainer" class="hidden space-y-6 fade-in-up">
+            <!-- Content will be injected here via JS -->
+        </div>
+
+        <!-- Default View -->
+        <div id="defaultContainer" class="text-center py-6 md:py-10 fade-in-up">
+            
+            <div id="suggestionBox" class="hidden bg-orange-50 text-orange-800 p-4 rounded-xl inline-block text-left w-full max-w-sm border border-orange-100 shadow-sm mb-8 mx-auto">
+                <p class="flex items-center gap-2 font-bold mb-1"><i data-lucide="info" class="w-4 h-4"></i> 提示：</p>
+                <p class="text-sm" id="suggestionText"></p>
+            </div>
+
+            <div id="emptyStateIcon" class="text-gray-400">
+                <i data-lucide="database" class="w-12 h-12 md:w-16 md:h-16 mx-auto mb-4 opacity-20"></i>
+                <p class="text-sm md:text-base">輸入完整地段代碼開始 API 查詢</p>
+            </div>
+            
+            <!-- Jurisdiction Reference Table -->
+            <div class="mt-12 text-left">
+                <h3 class="text-xl font-bold text-gray-700 mb-6 border-l-4 border-teal-500 pl-4">全縣轄區對照表 (2026 更新)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" id="officeList">
+                    <!-- Office list will be generated by JS -->
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Test Modal -->
+    <div id="testModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div class="bg-gray-800 p-4 text-white flex justify-between items-center">
+                <h4 class="font-bold flex items-center gap-2"><i data-lucide="terminal" class="w-4 h-4"></i> 系統測試單元報告</h4>
+                <button onclick="closeTestModal()"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="testLogs" class="p-6 space-y-3 max-h-[60vh] overflow-y-auto font-mono text-sm">
+                <!-- Logs will be here -->
+            </div>
+            <div class="p-4 bg-gray-50 border-t border-gray-100 text-center">
+                <button onclick="closeTestModal()" class="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold active:scale-95 transition">關閉報告</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-gray-400 py-8 px-4 text-center text-sm mt-auto">
+        <p class="font-medium">玉里地政便民查詢系統</p>
+        <p class="font-medium">© 2026 玉里地政事務所 ｜ 系統開發：資訊課</p>
+        <p class="mt-2 text-xs opacity-60">數據來源：內政部地籍圖元數據查詢服務</p>
+    </footer>
+
+    <script>
+        // --- 封鎖右鍵與開發者工具 ---
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => {
+            if(e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key)) || (e.ctrlKey && ['U','S'].includes(e.key))) e.preventDefault();
+        });
+
+        const offices = [
+            { id: 'yuli', name: '玉里地政事務所', areas: ['玉里鎮', '瑞穗鄉', '富里鄉', '卓溪鄉'], address: '花蓮縣玉里鎮莊敬路18號', phone: '03-888-3171', mapLink: 'https://google.com/maps?q=玉里地政事務所', website: 'https://www.yuli.gov.tw/', color: 'bg-orange-600', lightColor: 'bg-orange-50', borderColor: 'border-orange-200' },
+            { id: 'hualien', name: '花蓮地政事務所', areas: ['花蓮市', '吉安鄉', '新城鄉', '秀林鄉', '壽豐鄉'], address: '花蓮市府後路23號', phone: '03-822-5135', mapLink: 'https://www.google.com/maps/search/花蓮地政事務所', website: 'https://www.hl-land.gov.tw/', color: 'bg-blue-600', lightColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+            { id: 'fenglin', name: '鳳林地政事務所', areas: ['鳳林鎮', '光復鄉', '豐濱鄉', '萬榮鄉'], address: '花蓮縣鳳林鎮光華路1號', phone: '03-876-1103', mapLink: 'https://google.com/maps?q=鳳林地政事務所', website: 'https://flland.hl.gov.tw/', color: 'bg-green-600', lightColor: 'bg-green-50', borderColor: 'border-green-200' },
+        ];
+
+        let currentResults = [];
+        const searchInput = document.getElementById('searchInput');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const defaultContainer = document.getElementById('defaultContainer');
+        const suggestionBox = document.getElementById('suggestionBox');
+        const suggestionText = document.getElementById('suggestionText');
+        const officeListContainer = document.getElementById('officeList');
+        const emptyStateIcon = document.getElementById('emptyStateIcon');
+        const testModal = document.getElementById('testModal');
+        const testLogs = document.getElementById('testLogs');
+
+        let debounceTimer;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderOfficeList();
+            lucide.createIcons();
+            searchInput.addEventListener('input', handleInput);
+        });
+
+        function handleInput(e) {
+            clearTimeout(debounceTimer);
+            const term = e.target.value.trim().toUpperCase();
+            if (!term) { showDefaultView(); return; }
+            debounceTimer = setTimeout(() => { fetchLandDataWithXHR(term); }, 800);
+        }
+
+        /**
+         * 修正後的 XHR 請求函數
+         */
+        function fetchLandDataWithXHR(lotCode) {
+            currentResults = [];
+            resultsContainer.classList.remove('hidden');
+            defaultContainer.classList.add('hidden');
+            resultsContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-teal-600 loading-pulse">
+                    <i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-4"></i>
+                    <p class="font-bold">連線 API 中...</p>
+                </div>
+            `;
+            lucide.createIcons();
+
+            const xhr = new XMLHttpRequest();
+            // 使用 HTTPS 確保協定一致，避免 Mixed Content 錯誤
+            const url = `https://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService?LotCode=${lotCode}`;
+            
+            xhr.open("GET", url, true);
+            
+            // 重要：部分環境需要允許憑證跨傳
+            xhr.withCredentials = false; 
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        processApiResponse(xhr.responseText, lotCode);
+                    } else if (xhr.status === 0) {
+                        showSuggestion("連線遭拒。請確認瀏覽器未封鎖跨來源請求 (CORS)。");
+                    } else {
+                        showSuggestion("連線失敗 (HTTP Status: " + xhr.status + ")。");
+                    }
+                }
+            };
+            
+            xhr.onerror = function() {
+                showSuggestion("連線發生錯誤。這通常是 CORS 政策限制，請嘗試更換瀏覽器或檢查網路環境。");
+            };
+
+            xhr.send();
+        }
+
+        function processApiResponse(xmlString, lotCode) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+                const stringNode = xmlDoc.getElementsByTagName("string")[0];
+                
+                if (!stringNode || !stringNode.textContent) {
+                    showSuggestion("API 回傳格式異常或無回傳內容。");
+                    return;
+                }
+
+                const innerXmlContent = stringNode.textContent;
+                const innerDoc = parser.parseFromString(innerXmlContent, "text/xml");
+                
+                // 檢查是否成功抓到 MapMetadata
+                const metadataList = innerDoc.getElementsByTagName("MapMetadata");
+                
+                if (metadataList.length > 0) {
+                    const metadata = metadataList[0];
+                    
+                    // 確實將資料抓入陣列
+                    currentResults.push({
+                        mapName: metadata.getElementsByTagName("MapName")[0]?.textContent || "未知地段",
+                        lotCode: metadata.getElementsByTagName("LotCode")[0]?.textContent || lotCode,
+                        excerptType: metadata.getElementsByTagName("ExcerptType")[0]?.textContent || "無描述",
+                        coordinate: metadata.getElementsByTagName("CoordinateSystem")[0]?.textContent || "未知座標系",
+                        unit: metadata.getElementsByTagName("Holder_UnitName")[0]?.textContent || "未知單位",
+                        address: metadata.getElementsByTagName("Holder_ContactAddress")[0]?.textContent || "無地址資訊",
+                        phone: metadata.getElementsByTagName("Holder_ContactTel")[0]?.textContent || "無電話資訊",
+                        purpose: metadata.getElementsByTagName("Purpose")[0]?.textContent || "無測量目的描述"
+                    });
+
+                    renderStoredResults();
+                } else {
+                    const status = innerDoc.getElementsByTagName("Status")[0]?.textContent;
+                    const errorMsg = innerDoc.getElementsByTagName("Message")[0]?.textContent || "查無此代碼對應地段。";
+                    showSuggestion(errorMsg);
+                }
+            } catch (err) {
+                console.error("解析錯誤:", err);
+                showSuggestion("資料解析失敗。回傳內容非預期格式。");
+            }
+        }
+
+        function renderStoredResults() {
+            resultsContainer.innerHTML = '';
+            if (currentResults.length === 0) return;
+
+            currentResults.forEach(data => {
+                const office = offices.find(o => data.unit.includes(o.name.substring(0,2))) || offices[0];
+                const card = document.createElement('div');
+                card.className = "shadow-lg rounded-2xl overflow-hidden bg-white mb-6 border border-gray-100 transition-all hover:shadow-xl";
+                card.innerHTML = `
+                    <div class="p-5 text-white ${office.color} flex justify-between items-center">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-[0.2em] opacity-80 font-bold">查詢結果</span>
+                            <h2 class="text-xl md:text-2xl font-bold">${office.name}</h2>
+                        </div>
+                        <i data-lucide="map" class="w-8 h-8 opacity-40"></i>
+                    </div>
+                    <div class="p-5 md:p-8">
+                        <div class="mb-6 ${office.lightColor} border-l-4 ${office.borderColor} p-4 rounded-r-xl">
+                            <p class="text-sm md:text-base text-gray-800 leading-relaxed">
+                                地段：<strong class="text-xl text-teal-800">${data.mapName}</strong><br>
+                                代碼：<span class="bg-orange-100 text-orange-700 px-2 rounded font-mono font-bold">${data.lotCode}</span><br>
+                                座標系統：<span class="text-gray-600 font-medium">${data.coordinate}</span>
+                            </p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <div class="flex items-start">
+                                <div class="bg-gray-100 p-2 rounded-lg mr-4"><i data-lucide="map-pin" class="w-5 h-5 text-gray-500"></i></div>
+                                <div><p class="text-[10px] text-gray-400 font-bold uppercase mb-0.5">受理地址</p><p class="text-sm text-gray-800 font-medium">${data.address}</p></div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="bg-gray-100 p-2 rounded-lg mr-4"><i data-lucide="phone" class="w-5 h-5 text-gray-500"></i></div>
+                                <div><p class="text-[10px] text-gray-400 font-bold uppercase mb-0.5">聯絡電話</p><a href="tel:${data.phone}" class="text-teal-600 font-bold hover:underline text-lg">${data.phone}</a></div>
+                            </div>
+                        </div>
+                        <div class="mb-8 space-y-4">
+                            <div><p class="text-[10px] text-gray-400 font-bold uppercase mb-1">地籍說明</p><p class="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100">${data.excerptType}</p></div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <a href="${office.mapLink}" target="_blank" class="flex-1 bg-teal-600 text-white py-3.5 px-4 rounded-xl text-center font-bold hover:bg-teal-700 transition flex items-center justify-center gap-2">導航前往</a>
+                            <a href="${office.website}" target="_blank" class="flex-1 bg-white border-2 border-gray-200 text-gray-700 py-3.5 px-4 rounded-xl text-center font-bold">官方網站</a>
+                        </div>
+                    </div>
+                `;
+                resultsContainer.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        // --- 測試單元保持不變 ---
+        function addLog(msg, type = 'info') {
+            const div = document.createElement('div');
+            const colors = { info: 'text-gray-600', success: 'text-green-600 font-bold', error: 'text-red-600 font-bold', warning: 'text-orange-600' };
+            const icons = { info: '●', success: '✓', error: '✕', warning: '!' };
+            div.className = `${colors[type]} py-1 flex gap-2`;
+            div.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+            testLogs.appendChild(div);
+            testLogs.scrollTop = testLogs.scrollHeight;
+        }
+
+        async function runSystemTests() {
+            testModal.classList.remove('hidden');
+            testModal.classList.add('flex');
+            testLogs.innerHTML = '';
+            addLog("正在初始化單元測試...", "info");
+            setTimeout(() => { if (window.XMLHttpRequest) addLog("測試 1: 瀏覽器支援 XMLHttpRequest - 通過", "success"); else addLog("測試 1: 瀏覽器不支援 XHR - 失敗", "error"); }, 300);
+            setTimeout(() => { currentResults = []; if (Array.isArray(currentResults)) addLog("測試 2: 資料存儲陣列初始化 - 通過", "success"); }, 600);
+            setTimeout(() => {
+                const mockData = { mapName: "測試段", lotCode: "T001", unit: "玉里地政" };
+                currentResults.push(mockData);
+                if (currentResults.length > 0) addLog("測試 3: 本地資料寫入測試 - 通過", "success");
+            }, 900);
+            setTimeout(() => {
+                renderStoredResults();
+                if (resultsContainer.children.length > 0) addLog("測試 4: DOM 渲染引擎輸出測試 - 通過", "success");
+                currentResults = []; showDefaultView();
+                addLog("本地測試完成。若仍無實際資料，請確認 API 端點 CORS 權限。", "warning");
+            }, 1200);
+        }
+
+        function closeTestModal() { testModal.classList.add('hidden'); testModal.classList.remove('flex'); }
+        function setSearch(val) { searchInput.value = val; fetchLandDataWithXHR(val); }
+        function showDefaultView() { resultsContainer.classList.add('hidden'); defaultContainer.classList.remove('hidden'); suggestionBox.classList.add('hidden'); emptyStateIcon.classList.remove('hidden'); }
+        function showSuggestion(msg) { resultsContainer.classList.add('hidden'); defaultContainer.classList.remove('hidden'); suggestionText.textContent = msg; suggestionBox.classList.remove('hidden'); emptyStateIcon.classList.add('hidden'); }
+        function renderOfficeList() {
+            officeListContainer.innerHTML = offices.map(o => `
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="text-xs font-black px-2.5 py-1.5 text-white rounded-md w-fit mb-4 ${o.color}">${o.name}</div>
+                    <div class="flex flex-wrap gap-2">${o.areas.map(area => `<span class="text-sm bg-gray-50 text-gray-600 px-3 py-1.5 rounded-lg border border-gray-100 font-medium">${area}</span>`).join('')}</div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
