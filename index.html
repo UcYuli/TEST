@@ -1,165 +1,268 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MapMetadataService 單頁呼叫（多重 fallback）</title>
-  <style>
-    body { font-family: Arial, "Noto Sans TC", sans-serif; padding:20px; max-width:900px; margin:auto; }
-    input, button, select { font-size:14px; padding:6px 8px; margin-right:6px; }
-    button { cursor:pointer; }
-    pre { background:#f7f7f7; padding:12px; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
-    .muted { color:#666; font-size:13px; margin-top:6px; }
-    .warn { color:#a33; font-weight:700; }
-    label { display:inline-block; margin-bottom:8px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地籍圖詮釋資料查詢系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-spinner {
+            border: 3px solid #ffffff;
+            border-top: 3px solid transparent;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .field-label { background-color: #f8fafc; width: 35%; font-weight: 600; }
+        .success-animate { animation: slideUp 0.4s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
-<body>
-  <h3>MapMetadataService 呼叫</h3>
+<body class="bg-slate-50 min-h-screen font-sans">
 
-  <div>
-    <label>LotCode: <input id="lotcode" value="B010001" /></label>
-    <label>Method:
-      <select id="method"><option>GET</option><option>POST</option></select>
-    </label>
-  </div>
+    <div class="max-w-4xl mx-auto py-10 px-4">
+        <!-- 主面板 -->
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+            <!-- 標題欄 -->
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h1 class="text-3xl font-black flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                            </svg>
+                            地籍圖詮釋資料
+                        </h1>
+                        <p class="mt-2 text-blue-100 opacity-90 font-medium">MapMetadataService 自動化查詢工具</p>
+                    </div>
+                    <div class="bg-white/10 px-3 py-1 rounded-full text-xs backdrop-blur-md">v2.5 Auto-Fetch</div>
+                </div>
+            </div>
 
-  <div style="margin-top:8px;">
-    <button id="btnCall">呼叫（自動 fallback）</button>
-    <button id="btnClear">清除</button>
-  </div>
+            <!-- 控制面板 -->
+            <div class="p-8 border-b border-slate-100">
+                <div class="flex flex-col space-y-4">
+                    <label class="text-sm font-bold text-slate-500 uppercase tracking-widest">請輸入地段代碼 (LotCode)</label>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <div class="relative flex-1">
+                            <input type="text" id="lotCode" value="U030300" 
+                                class="w-full pl-5 pr-4 py-4 bg-slate-100 border-none rounded-2xl focus:ring-4 focus:ring-blue-500/20 transition-all text-xl font-mono font-bold text-slate-700"
+                                placeholder="例如: U030300">
+                        </div>
+                        <button id="autoQueryBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-black px-10 py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-3 group">
+                            <span id="btnText">自動查詢</span>
+                            <div id="spinner" class="loading-spinner hidden"></div>
+                            <svg id="arrowIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400">提示：如果自動查詢受阻，系統會自動切換為手動引導模式。</p>
+                </div>
+            </div>
 
-  <div style="margin-top:10px;">
-    <label>自訂 Proxy（可留空）: <input id="customProxy" placeholder="例如 https://localhost:3000/proxy?url=" style="width:420px" /></label>
-  </div>
+            <!-- 查詢結果區 -->
+            <div id="resultArea" class="hidden success-animate">
+                <div class="p-6 bg-emerald-50 border-b border-emerald-100 flex justify-between items-center">
+                    <span class="text-emerald-700 font-bold flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                        解析成功
+                    </span>
+                    <button id="viewRawBtn" class="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">檢視來源 XML</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <tbody id="metadataTable" class="divide-y divide-slate-100">
+                            <!-- JS 動態生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-  <p class="muted">若直接呼叫失敗，頁面會依序嘗試下列公開 proxy：AllOrigins、ThingProxy、CORSProxy.io。正式環境請自行部署後端 proxy。</p>
+            <!-- 預設/等待狀態 -->
+            <div id="emptyState" class="py-32 text-center">
+                <div class="bg-slate-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <h3 class="text-slate-500 font-bold text-lg">等待執行查詢</h3>
+                <p class="text-slate-400 text-sm mt-1">請輸入代碼後點擊自動查詢按鈕</p>
+            </div>
 
-  <h4>回傳結果</h4>
-  <pre id="result">尚未呼叫</pre>
+            <!-- 手動容錯區 (僅在失敗時顯示) -->
+            <div id="errorArea" class="hidden p-8 bg-red-50 border-t border-red-100">
+                <div class="flex items-start gap-4">
+                    <div class="bg-red-100 p-3 rounded-2xl">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="text-red-800 font-black">自動抓取受阻</h4>
+                        <p class="text-red-700 text-xs mt-1 leading-relaxed">由於瀏覽器 Mixed Content 政策，無法直接存取非加密 API。請協助以下操作：</p>
+                        <div class="mt-4 flex flex-wrap gap-3">
+                            <a id="failLink" href="#" target="_blank" class="bg-white border border-red-200 px-4 py-2 rounded-xl text-sm font-bold text-red-600 hover:bg-red-100 transition-all">1. 點此打開資料頁</a>
+                            <button id="showManualInput" class="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 shadow-md transition-all">2. 貼上內容解析</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="manualInputContainer" class="hidden mt-6">
+                    <textarea id="rawInput" rows="4" class="w-full p-4 border-2 border-red-200 rounded-2xl font-mono text-xs focus:ring-0 focus:border-red-400 bg-white" placeholder="貼上 XML 內容..."></textarea>
+                    <button id="parseManualBtn" class="mt-2 w-full bg-red-800 text-white py-3 rounded-xl font-bold">手動解析</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-  <script>
-    const TARGET = 'http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService';
-    const resultEl = document.getElementById('result');
-    const proxies = [
-      { name: 'AllOrigins', build: url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url), supportsPost:false },
-      { name: 'ThingProxy', build: url => 'https://thingproxy.freeboard.io/fetch/' + url, supportsPost:false },
-      { name: 'CORSProxyIO', build: url => 'https://corsproxy.io/?' + url, supportsPost:true }
-    ];
+    <!-- XML Modal -->
+    <div id="xmlModal" class="hidden fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+        <div class="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col border border-slate-700">
+            <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="text-white font-bold">原始 XML 代碼</h3>
+                <button id="closeModal" class="text-slate-400 hover:text-white text-3xl">&times;</button>
+            </div>
+            <pre id="xmlCode" class="p-8 overflow-auto text-blue-300 font-mono text-xs leading-relaxed flex-1"></pre>
+        </div>
+    </div>
 
-    function show(text) { resultEl.textContent = text; }
+    <script>
+        const FIELDS = {
+            "MapName": "圖層名稱",
+            "LotCode": "地段代碼",
+            "ExcerptType": "資料摘要",
+            "Keyword": "主題關鍵字",
+            "CompletiveTime": "完成日期",
+            "CreateTime": "建置時間",
+            "CoordinateSystem": "坐標系統",
+            "MapScale": "比例尺分母",
+            "DescriptionOfQuality": "品質評估",
+            "DescriptionOfTrack": "資料歷程",
+            "Subscription": "申購指引",
+            "Holder_UnitName": "單位名稱",
+            "Holder_ContactName": "聯絡人",
+            "Maker_UnitName": "生產單位",
+            "Supplier_UnitName": "供應單位",
+            "Authority_UnitName": "權責單位",
+            "Purpose": "建置目的",
+            "Progress": "建置狀況",
+            "WestBoundLongitude": "最西經度",
+            "EastBoundLongitude": "最東經度",
+            "SouthBoundLatitude": "最南緯度",
+            "NorthBoundLatitude": "最北緯度",
+            "UseLimitation": "用途限制",
+            "GetRestriction": "取得限制",
+            "Classification": "安全分級",
+            "MaintenanceFrequency": "維護頻率"
+        };
 
-    function prettyXml(xmlText) {
-      try {
-        const p = new DOMParser();
-        const doc = p.parseFromString(xmlText, 'application/xml');
-        if (doc.querySelector('parsererror')) return xmlText;
-        const xs = new XMLSerializer();
-        const raw = xs.serializeToString(doc);
-        return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3').split('\n').map(l => l.trim()).join('\n');
-      } catch (e) {
-        return xmlText;
-      }
-    }
+        const lotInput = document.getElementById('lotCode');
+        const autoBtn = document.getElementById('autoQueryBtn');
+        const metadataTable = document.getElementById('metadataTable');
+        const resultArea = document.getElementById('resultArea');
+        const emptyState = document.getElementById('emptyState');
+        const errorArea = document.getElementById('errorArea');
+        
+        let lastXml = "";
 
-    async function fetchDirect(url, options) {
-      const resp = await fetch(url, options);
-      if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
-      const text = await resp.text();
-      return { text, via: 'direct', status: resp.status, contentType: resp.headers.get('content-type') || '' };
-    }
+        autoBtn.onclick = async () => {
+            const code = lotInput.value.trim();
+            if(!code) return;
 
-    async function fetchViaProxy(proxy, targetUrl, options) {
-      const proxyUrl = proxy.build(targetUrl);
-      // If proxy doesn't support POST and user requested POST, skip
-      if (options && options.method === 'POST' && !proxy.supportsPost) {
-        throw new Error(proxy.name + ' 不支援 POST 轉發');
-      }
-      const resp = await fetch(proxyUrl, options && options.method ? options : { method: 'GET' });
-      if (!resp.ok) throw new Error(proxy.name + ' 回傳 HTTP ' + resp.status);
-      const text = await resp.text();
-      return { text, via: proxy.name, status: resp.status, contentType: resp.headers.get('content-type') || '' };
-    }
+            // 重設 UI
+            resultArea.classList.add('hidden');
+            errorArea.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            document.getElementById('spinner').classList.remove('hidden');
+            document.getElementById('arrowIcon').classList.add('hidden');
+            autoBtn.disabled = true;
 
-    async function callService(lotcode, method, customProxy) {
-      const urlWithQuery = TARGET + '?LotCode=' + encodeURIComponent(lotcode);
-      const body = 'LotCode=' + encodeURIComponent(lotcode);
-      show('開始呼叫...\n目標: ' + TARGET + '\n方法: ' + method + '\n自訂 Proxy: ' + (customProxy || '(無)') + '\n\n嘗試直接連線...');
-      // 1. 直接嘗試
-      try {
-        if (method === 'GET') {
-          const r = await fetchDirect(urlWithQuery, { method: 'GET', headers: { 'Accept': 'application/xml, text/xml, */*' } });
-          showResult(r);
-          return;
-        } else {
-          const r = await fetchDirect(TARGET, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/xml, text/xml, */*' }, body });
-          showResult(r);
-          return;
+            const targetUrl = `http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService?LotCode=${code}`;
+            // 使用 AllOrigins 代理繞過 CORS 和 Mixed Content
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+            try {
+                const res = await fetch(proxyUrl);
+                if(!res.ok) throw new Error();
+                const json = await res.json();
+                
+                if(json.contents) {
+                    processXml(json.contents);
+                } else {
+                    throw new Error("Empty Response");
+                }
+            } catch (e) {
+                // 如果失敗，顯示手動區塊
+                errorArea.classList.remove('hidden');
+                document.getElementById('failLink').href = targetUrl;
+            } finally {
+                document.getElementById('spinner').classList.add('hidden');
+                document.getElementById('arrowIcon').classList.remove('hidden');
+                autoBtn.disabled = false;
+            }
+        };
+
+        function processXml(xmlString) {
+            lastXml = xmlString;
+            const parser = new DOMParser();
+            let doc = parser.parseFromString(xmlString, "text/xml");
+
+            // 處理包在 <string> 標籤內的情況
+            const sNode = doc.getElementsByTagName('string')[0];
+            if(sNode && sNode.textContent.includes('<?xml')) {
+                doc = parser.parseFromString(sNode.textContent, "text/xml");
+            }
+
+            if(doc.getElementsByTagName('parsererror').length > 0) return;
+
+            metadataTable.innerHTML = "";
+            let count = 0;
+
+            for(const [tag, label] of Object.entries(FIELDS)) {
+                const nodes = doc.getElementsByTagName(tag);
+                if(nodes.length > 0) {
+                    const val = nodes[0].textContent.trim();
+                    if(val) {
+                        appendRow(label, val, tag);
+                        count++;
+                    }
+                }
+            }
+
+            if(count > 0) {
+                resultArea.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                errorArea.classList.add('hidden');
+            }
         }
-      } catch (err) {
-        console.warn('Direct failed', err);
-        show('直接呼叫失敗：' + err.message + '\n\n開始依序嘗試公開 proxy...');
-      }
 
-      // 2. 若有自訂 proxy，先嘗試自訂 proxy（假設自訂 proxy 接受完整 target URL 或已包含 ?url=）
-      if (customProxy) {
-        try {
-          // If customProxy contains placeholder {url}, replace it; else append target as query param if it ends with '=' or contains '?'
-          let proxyEndpoint = customProxy;
-          if (proxyEndpoint.includes('{url}')) {
-            proxyEndpoint = proxyEndpoint.replace('{url}', encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET));
-          } else if (proxyEndpoint.includes('=') || proxyEndpoint.endsWith('/')) {
-            // assume user provided something like https://localhost:3000/proxy?url=
-            proxyEndpoint = proxyEndpoint + encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET);
-          } else {
-            // fallback: append as path
-            proxyEndpoint = proxyEndpoint + encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET);
-          }
-
-          const opts = method === 'GET' ? { method: 'GET' } : { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body };
-          const resp = await fetch(proxyEndpoint, opts);
-          if (!resp.ok) throw new Error('自訂 proxy 回傳 HTTP ' + resp.status);
-          const text = await resp.text();
-          showResult({ text, via: 'customProxy', status: resp.status, contentType: resp.headers.get('content-type') || '' });
-          return;
-        } catch (err) {
-          console.warn('Custom proxy failed', err);
-          show('自訂 proxy 失敗：' + err.message + '\n\n繼續嘗試公開 proxy...');
+        function appendRow(label, value, tag) {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-slate-50 transition-colors";
+            tr.innerHTML = `
+                <td class="px-8 py-5 field-label border-r border-slate-100">
+                    <div class="text-slate-900 text-sm font-bold">${label}</div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-1 opacity-70">${tag}</div>
+                </td>
+                <td class="px-8 py-5 text-slate-600 text-sm leading-relaxed">${value}</td>
+            `;
+            metadataTable.appendChild(tr);
         }
-      }
 
-      // 3. 依序嘗試公開 proxy 列表
-      for (const p of proxies) {
-        try {
-          const opts = method === 'GET' ? { method: 'GET' } : { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body };
-          const targetForProxy = method === 'GET' ? urlWithQuery : TARGET;
-          const r = await fetchViaProxy(p, targetForProxy, opts);
-          showResult(r);
-          return;
-        } catch (err) {
-          console.warn(p.name + ' failed', err);
-          // continue to next proxy
-        }
-      }
+        // 手動輸入連鎖反應
+        document.getElementById('showManualInput').onclick = () => {
+            document.getElementById('manualInputContainer').classList.toggle('hidden');
+        };
 
-      // 4. 全部失敗
-      show('所有嘗試皆失敗。\n\n建議：在本機啟動簡單 proxy，然後把 proxy URL 貼到「自訂 Proxy」欄位再試一次。\n\n本機快速 proxy 範例（Node.js，一行啟動）：\n\n1) 安裝並啟動 cors-anywhere（臨時測試用）：\n   npx cors-anywhere\n   → 預設會在 http://localhost:8080/，使用方式： http://localhost:8080/' + TARGET + '?LotCode=B010001\n\n2) 或使用 local-cors-proxy：\n   npx local-cors-proxy --proxyUrl ' + TARGET + '\n\n把對應的 proxy endpoint 貼到「自訂 Proxy」欄位（例如 https://localhost:8080/ 或 http://localhost:8080/），再按呼叫。');
-    }
+        document.getElementById('parseManualBtn').onclick = () => {
+            const val = document.getElementById('rawInput').value.trim();
+            if(val) processXml(val);
+        };
 
-    function showResult(r) {
-      const header = `成功（via: ${r.via}）\nHTTP: ${r.status}\nContent-Type: ${r.contentType}\n\n`;
-      const body = prettyXml(r.text);
-      show(header + body);
-    }
-
-    document.getElementById('btnCall').addEventListener('click', () => {
-      const code = document.getElementById('lotcode').value.trim() || 'B010001';
-      const method = document.getElementById('method').value;
-      const customProxy = document.getElementById('customProxy').value.trim();
-      callService(code, method, customProxy);
-    });
-
-    document.getElementById('btnClear').addEventListener('click', () => show('尚未呼叫'));
-  </script>
+        // Modal
+        document.getElementById('viewRawBtn').onclick = () => {
+            document.getElementById('xmlCode').textContent = lastXml;
+            document.getElementById('xmlModal').classList.remove('hidden');
+        };
+        document.getElementById('closeModal').onclick = () => document.getElementById('xmlModal').classList.add('hidden');
+    </script>
 </body>
 </html>
