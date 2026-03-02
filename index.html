@@ -3,32 +3,37 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MapMetadataService 單頁呼叫範例（含自動 fallback proxy）</title>
+  <title>MapMetadataService 單頁呼叫（多重 fallback）</title>
   <style>
-    body { font-family: Arial, "Noto Sans TC", sans-serif; padding: 20px; max-width:900px; margin:auto; }
-    input, button { font-size: 14px; padding:6px 8px; }
-    button { margin-right:8px; }
-    pre { background:#f7f7f8; padding:12px; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
-    .meta { color:#666; font-size:13px; margin-bottom:12px; }
-    .warn { color:#a33; font-weight:600; }
+    body { font-family: Arial, "Noto Sans TC", sans-serif; padding:20px; max-width:900px; margin:auto; }
+    input, button, select { font-size:14px; padding:6px 8px; margin-right:6px; }
+    button { cursor:pointer; }
+    pre { background:#f7f7f7; padding:12px; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
+    .muted { color:#666; font-size:13px; margin-top:6px; }
+    .warn { color:#a33; font-weight:700; }
+    label { display:inline-block; margin-bottom:8px; }
   </style>
 </head>
 <body>
-  <h3>MapMetadataService 呼叫（單頁 HTML）</h3>
-  <div class="meta">
-    API: <code>http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService</code>
-    。若直接呼叫失敗，頁面會自動嘗試公開 CORS proxy 作為 fallback。
-  </div>
+  <h3>MapMetadataService 呼叫</h3>
 
   <div>
     <label>LotCode: <input id="lotcode" value="B010001" /></label>
+    <label>Method:
+      <select id="method"><option>GET</option><option>POST</option></select>
+    </label>
+  </div>
+
+  <div style="margin-top:8px;">
+    <button id="btnCall">呼叫（自動 fallback）</button>
+    <button id="btnClear">清除</button>
   </div>
 
   <div style="margin-top:10px;">
-    <button id="btnGet">GET 呼叫（自動 fallback）</button>
-    <button id="btnPost">POST 呼叫（自動 fallback）</button>
-    <button id="btnClear">清除結果</button>
+    <label>自訂 Proxy（可留空）: <input id="customProxy" placeholder="例如 https://localhost:3000/proxy?url=" style="width:420px" /></label>
   </div>
+
+  <p class="muted">若直接呼叫失敗，頁面會依序嘗試下列公開 proxy：AllOrigins、ThingProxy、CORSProxy.io。正式環境請自行部署後端 proxy。</p>
 
   <h4>回傳結果</h4>
   <pre id="result">尚未呼叫</pre>
@@ -36,10 +41,14 @@
   <script>
     const TARGET = 'http://lisp.land.moi.gov.tw/MMS/Handle/MapMetadataService.asmx/RequestService';
     const resultEl = document.getElementById('result');
+    const proxies = [
+      { name: 'AllOrigins', build: url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url), supportsPost:false },
+      { name: 'ThingProxy', build: url => 'https://thingproxy.freeboard.io/fetch/' + url, supportsPost:false },
+      { name: 'CORSProxyIO', build: url => 'https://corsproxy.io/?' + url, supportsPost:true }
+    ];
 
     function show(text) { resultEl.textContent = text; }
 
-    // Helper: pretty-print XML if possible
     function prettyXml(xmlText) {
       try {
         const p = new DOMParser();
@@ -47,104 +56,110 @@
         if (doc.querySelector('parsererror')) return xmlText;
         const xs = new XMLSerializer();
         const raw = xs.serializeToString(doc);
-        // simple formatting
         return raw.replace(/(>)(<)(\/*)/g, '$1\n$2$3').split('\n').map(l => l.trim()).join('\n');
       } catch (e) {
         return xmlText;
       }
     }
 
-    // Primary fetch attempt (direct)
-    async function tryDirectFetch(url, options) {
+    async function fetchDirect(url, options) {
       const resp = await fetch(url, options);
       if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
       const text = await resp.text();
       return { text, via: 'direct', status: resp.status, contentType: resp.headers.get('content-type') || '' };
     }
 
-    // Fallback GET via AllOrigins (GET only)
-    async function fetchViaAllOriginsGet(targetUrl) {
-      // AllOrigins raw endpoint
-      const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl);
-      const resp = await fetch(proxy, { method: 'GET' });
-      if (!resp.ok) throw new Error('Proxy GET failed: ' + resp.status);
-      const text = await resp.text();
-      return { text, via: 'allorigins', status: resp.status, contentType: resp.headers.get('content-type') || '' };
-    }
-
-    // Fallback POST via corsproxy.io (supports forwarding POST)
-    async function fetchViaCorsProxyPost(targetUrl, body, contentType='application/x-www-form-urlencoded') {
-      // corsproxy.io forwards the request if you append the target URL as query
-      // POST to: https://corsproxy.io/?<TARGET>
-      const proxy = 'https://corsproxy.io/?' + targetUrl;
-      const resp = await fetch(proxy, {
-        method: 'POST',
-        headers: { 'Content-Type': contentType },
-        body: body
-      });
-      if (!resp.ok) throw new Error('Proxy POST failed: ' + resp.status);
-      const text = await resp.text();
-      return { text, via: 'corsproxy.io', status: resp.status, contentType: resp.headers.get('content-type') || '' };
-    }
-
-    // Unified GET with fallback
-    async function callGetWithFallback(lotcode) {
-      const url = TARGET + '?LotCode=' + encodeURIComponent(lotcode);
-      show('嘗試直接 GET：\n' + url);
-      try {
-        const r = await tryDirectFetch(url, { method: 'GET', headers: { 'Accept': 'application/xml, text/xml, */*' } });
-        show(`成功（${r.via}）\n\nContent-Type: ${r.contentType}\n\n` + prettyXml(r.text));
-      } catch (err) {
-        console.warn('Direct GET failed:', err);
-        show('直接 GET 失敗：' + err.message + '\n\n嘗試使用公開 proxy（AllOrigins）...');
-        try {
-          const r2 = await fetchViaAllOriginsGet(url);
-          show(`成功（${r2.via}）\n\nContent-Type: ${r2.contentType}\n\n` + prettyXml(r2.text));
-        } catch (err2) {
-          console.error('Proxy GET failed:', err2);
-          show('Proxy GET 也失敗：' + err2.message + '\n\n請檢查網路、或改用本機/自建後端 proxy。');
-        }
+    async function fetchViaProxy(proxy, targetUrl, options) {
+      const proxyUrl = proxy.build(targetUrl);
+      // If proxy doesn't support POST and user requested POST, skip
+      if (options && options.method === 'POST' && !proxy.supportsPost) {
+        throw new Error(proxy.name + ' 不支援 POST 轉發');
       }
+      const resp = await fetch(proxyUrl, options && options.method ? options : { method: 'GET' });
+      if (!resp.ok) throw new Error(proxy.name + ' 回傳 HTTP ' + resp.status);
+      const text = await resp.text();
+      return { text, via: proxy.name, status: resp.status, contentType: resp.headers.get('content-type') || '' };
     }
 
-    // Unified POST with fallback
-    async function callPostWithFallback(lotcode) {
+    async function callService(lotcode, method, customProxy) {
+      const urlWithQuery = TARGET + '?LotCode=' + encodeURIComponent(lotcode);
       const body = 'LotCode=' + encodeURIComponent(lotcode);
-      show('嘗試直接 POST：\n' + TARGET + '\n\nbody: ' + body);
+      show('開始呼叫...\n目標: ' + TARGET + '\n方法: ' + method + '\n自訂 Proxy: ' + (customProxy || '(無)') + '\n\n嘗試直接連線...');
+      // 1. 直接嘗試
       try {
-        const r = await tryDirectFetch(TARGET, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/xml, text/xml, */*' },
-          body: body
-        });
-        show(`成功（${r.via}）\n\nContent-Type: ${r.contentType}\n\n` + prettyXml(r.text));
+        if (method === 'GET') {
+          const r = await fetchDirect(urlWithQuery, { method: 'GET', headers: { 'Accept': 'application/xml, text/xml, */*' } });
+          showResult(r);
+          return;
+        } else {
+          const r = await fetchDirect(TARGET, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/xml, text/xml, */*' }, body });
+          showResult(r);
+          return;
+        }
       } catch (err) {
-        console.warn('Direct POST failed:', err);
-        show('直接 POST 失敗：' + err.message + '\n\n嘗試使用公開 proxy（corsproxy.io）...');
+        console.warn('Direct failed', err);
+        show('直接呼叫失敗：' + err.message + '\n\n開始依序嘗試公開 proxy...');
+      }
+
+      // 2. 若有自訂 proxy，先嘗試自訂 proxy（假設自訂 proxy 接受完整 target URL 或已包含 ?url=）
+      if (customProxy) {
         try {
-          const r2 = await fetchViaCorsProxyPost(TARGET, body, 'application/x-www-form-urlencoded');
-          show(`成功（${r2.via}）\n\nContent-Type: ${r2.contentType}\n\n` + prettyXml(r2.text));
-        } catch (err2) {
-          console.error('Proxy POST failed:', err2);
-          show('Proxy POST 也失敗：' + err2.message + '\n\n請檢查網路、或改用本機/自建後端 proxy。');
+          // If customProxy contains placeholder {url}, replace it; else append target as query param if it ends with '=' or contains '?'
+          let proxyEndpoint = customProxy;
+          if (proxyEndpoint.includes('{url}')) {
+            proxyEndpoint = proxyEndpoint.replace('{url}', encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET));
+          } else if (proxyEndpoint.includes('=') || proxyEndpoint.endsWith('/')) {
+            // assume user provided something like https://localhost:3000/proxy?url=
+            proxyEndpoint = proxyEndpoint + encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET);
+          } else {
+            // fallback: append as path
+            proxyEndpoint = proxyEndpoint + encodeURIComponent(method === 'GET' ? urlWithQuery : TARGET);
+          }
+
+          const opts = method === 'GET' ? { method: 'GET' } : { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body };
+          const resp = await fetch(proxyEndpoint, opts);
+          if (!resp.ok) throw new Error('自訂 proxy 回傳 HTTP ' + resp.status);
+          const text = await resp.text();
+          showResult({ text, via: 'customProxy', status: resp.status, contentType: resp.headers.get('content-type') || '' });
+          return;
+        } catch (err) {
+          console.warn('Custom proxy failed', err);
+          show('自訂 proxy 失敗：' + err.message + '\n\n繼續嘗試公開 proxy...');
         }
       }
+
+      // 3. 依序嘗試公開 proxy 列表
+      for (const p of proxies) {
+        try {
+          const opts = method === 'GET' ? { method: 'GET' } : { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body };
+          const targetForProxy = method === 'GET' ? urlWithQuery : TARGET;
+          const r = await fetchViaProxy(p, targetForProxy, opts);
+          showResult(r);
+          return;
+        } catch (err) {
+          console.warn(p.name + ' failed', err);
+          // continue to next proxy
+        }
+      }
+
+      // 4. 全部失敗
+      show('所有嘗試皆失敗。\n\n建議：在本機啟動簡單 proxy，然後把 proxy URL 貼到「自訂 Proxy」欄位再試一次。\n\n本機快速 proxy 範例（Node.js，一行啟動）：\n\n1) 安裝並啟動 cors-anywhere（臨時測試用）：\n   npx cors-anywhere\n   → 預設會在 http://localhost:8080/，使用方式： http://localhost:8080/' + TARGET + '?LotCode=B010001\n\n2) 或使用 local-cors-proxy：\n   npx local-cors-proxy --proxyUrl ' + TARGET + '\n\n把對應的 proxy endpoint 貼到「自訂 Proxy」欄位（例如 https://localhost:8080/ 或 http://localhost:8080/），再按呼叫。');
     }
 
-    document.getElementById('btnGet').addEventListener('click', () => {
-      const code = document.getElementById('lotcode').value.trim() || 'B010001';
-      callGetWithFallback(code);
-    });
+    function showResult(r) {
+      const header = `成功（via: ${r.via}）\nHTTP: ${r.status}\nContent-Type: ${r.contentType}\n\n`;
+      const body = prettyXml(r.text);
+      show(header + body);
+    }
 
-    document.getElementById('btnPost').addEventListener('click', () => {
+    document.getElementById('btnCall').addEventListener('click', () => {
       const code = document.getElementById('lotcode').value.trim() || 'B010001';
-      callPostWithFallback(code);
+      const method = document.getElementById('method').value;
+      const customProxy = document.getElementById('customProxy').value.trim();
+      callService(code, method, customProxy);
     });
 
     document.getElementById('btnClear').addEventListener('click', () => show('尚未呼叫'));
-
-    // 自動測試（可註解掉）
-    // window.addEventListener('load', () => { /* callGetWithFallback('B010001'); */ });
   </script>
 </body>
 </html>
